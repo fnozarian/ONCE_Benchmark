@@ -122,21 +122,26 @@ class SemiPVRCNNHead(PVRCNNHead):
             raise NotImplementedError
 
         rcnn_loss_cls = rcnn_loss_cls * loss_cfgs.LOSS_WEIGHTS['rcnn_cls_weight']
-        tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item()}
+        tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item() if not rcnn_loss_cls.shape else rcnn_loss_cls}
         return rcnn_loss_cls, tb_dict
 
-    def get_loss_ulb(self, tb_dict=None):
+    def get_loss_ulb(self, tb_dict=None): 
         tb_dict = {} if tb_dict is None else tb_dict
         rcnn_loss = 0
         enable_st = self.model_cfg.get('ENABLE_SOFT_TEACHER', False)
         enable_ulb_obj = self.model_cfg.get('UNLABELED_SUPERVISE_OBJ', False)
+        reduce_loss = getattr(torch, self.model_cfg.LOSS_CONFIG.REDUCE_LOSS, 'sum')
         if enable_st or enable_ulb_obj:
-            rcnn_cls_loss, rcnn_cls_tb_dict = self.get_box_cls_layer_loss(self.forward_ret_dict)
-            rcnn_loss += rcnn_cls_loss
+            rcnn_loss_cls, rcnn_cls_tb_dict = self.get_box_cls_layer_loss(self.forward_ret_dict)
+            if rcnn_loss_cls.shape:
+                rcnn_loss_cls=reduce_loss(rcnn_loss_cls)
+                rcnn_cls_tb_dict['rcnn_loss_cls'] = reduce_loss(rcnn_cls_tb_dict['rcnn_loss_cls'])
+            rcnn_loss += rcnn_loss_cls
             tb_dict.update(rcnn_cls_tb_dict)
+        
         if self.model_cfg.get('UNLABELED_SUPERVISE_REFINE', False):
-            rcnn_reg_loss, rcnn_reg_tb_dict = self.get_box_reg_layer_loss(self.forward_ret_dict)
-            rcnn_loss += rcnn_reg_loss
+            rcnn_loss_reg, rcnn_reg_tb_dict = self.get_box_reg_layer_loss(self.forward_ret_dict)
+            rcnn_loss += rcnn_loss_reg
             tb_dict.update(rcnn_reg_tb_dict)
         tb_dict['rcnn_loss'] = rcnn_loss
 
