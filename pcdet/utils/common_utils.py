@@ -132,41 +132,28 @@ def init_dist_slurm(tcp_port, local_rank, backend='nccl'):
     # os.environ['MASTER_ADDR'] = addr
     # os.environ['WORLD_SIZE'] = str(ntasks)
     # os.environ['RANK'] = str(proc_id)
+    dist_vars = """ SLURM_NODELIST: %s
+                    cuda.device_count: %s
+                    SLURM_NTASKS: %s
+                    WORLD_SIZE: %s
+                    LOCAL_RANK: %s
+                    RANK remainder cuda.device_count: %s
+                    SLURM_PROCID: %s
+                    RANK: %s
+                    \n
+                    """ % (os.environ["SLURM_NODELIST"],
+                           str(torch.cuda.device_count()),
+                           os.environ["SLURM_NTASKS"],
+                           os.environ["WORLD_SIZE"],
+                           os.environ["LOCAL_RANK"],
+                           str(int(os.environ["RANK"]) % int(torch.cuda.device_count())),
+                           os.environ["SLURM_PROCID"],
+                           os.environ["RANK"],
+                           )
+    print(dist_vars)
     dist.init_process_group(backend=backend)
     rank = int(os.environ['RANK'])
     total_gpus = dist.get_world_size()
-    
-    dist_vars = """ SLURM_NODELIST: %s
-                    
-                    cuda.device_count: %s
-                    
-                    SLURM_NTASKS: %s
-                    WORLD_SIZE: %s
-                    dist.get_world_size: %s
-                    
-                    LOCAL_RANK: %s
-                    RANK remainder cuda.device_count: %s
-                    
-                    SLURM_PROCID: %s
-                    RANK: %s
-                    dist.get_rank: %s
-                    \n
-                    """ % (os.environ["SLURM_NODELIST"],
-
-                           str(torch.cuda.device_count()),
-
-                           os.environ["SLURM_NTASKS"],
-                           os.environ["WORLD_SIZE"],
-                           str(dist.get_world_size()),
-
-                           os.environ["LOCAL_RANK"],
-                           str(int(os.environ["RANK"]) % int(torch.cuda.device_count())),
-
-                           os.environ["SLURM_PROCID"],
-                           os.environ["RANK"],
-                           str(dist.get_rank())
-                           )
-    print(dist_vars)
     return total_gpus, rank
 
 
