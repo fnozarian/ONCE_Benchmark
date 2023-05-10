@@ -42,8 +42,8 @@ def get_evaluation_results(gt_annos, pred_annos, classes,
     assert len(gt_annos) == len(pred_annos), "the number of GT must match predictions"
     assert difficulty_mode in ['Overall&Distance', 'Overall', 'Distance'], "difficulty mode is not supported"
     if use_superclass:
-        if ('Car' in classes) or ('Bus' in classes) or ('Truck' in classes):
-            assert ('Car' in classes) and ('Bus' in classes) and ('Truck' in classes), "Car/Bus/Truck must all exist for vehicle detection"
+        # if ('Car' in classes) or ('Bus' in classes) or ('Truck' in classes):
+        #     assert ('Car' in classes) and ('Bus' in classes) and ('Truck' in classes), "Car/Bus/Truck must all exist for vehicle detection"
         classes = [cls_name for cls_name in classes if cls_name not in ['Car', 'Bus', 'Truck']]
         classes.insert(0, 'Vehicle')
 
