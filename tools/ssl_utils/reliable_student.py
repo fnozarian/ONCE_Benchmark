@@ -90,6 +90,9 @@ def reliable_student(teacher_model, student_model,
     load_data_to_gpu(ld_student_batch_dict)
     load_data_to_gpu(ud_student_batch_dict)
     load_data_to_gpu(ud_teacher_batch_dict)
+    if dist:
+        teacher_model=teacher_model.module.onepass
+        student_model=student_model.module.onepass
 
     with torch.no_grad():
         for cur_module in teacher_model.module_list:
