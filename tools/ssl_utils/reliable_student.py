@@ -83,6 +83,8 @@ def reliable_student(teacher_model, student_model,
     teacher_boxes = reverse_transform(teacher_boxes, ud_teacher_batch_dict, ud_student_batch_dict)
     pl_boxes = construct_pseudo_label(teacher_boxes)
     pl_scores = construct_pseudo_label_scores(teacher_boxes)
+    pl_boxes.to(ud_student_batch_dict['points'].device)# could be refactored in a better way
+    pl_scores.to(ud_student_batch_dict['points'].device)
     ud_student_batch_dict['gt_boxes'] = pl_boxes
     ud_student_batch_dict['pl_scores'] = pl_scores
 

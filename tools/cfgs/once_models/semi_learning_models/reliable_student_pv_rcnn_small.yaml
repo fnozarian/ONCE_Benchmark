@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
-USE_PRETRAIN_MODEL: True
-PRETRAIN_CKPT: ../output/cfgs/once_models/semi_learning_models/reliable_student_pv_rcnn_small/once_rs_small/pretrain_ckpt/checkpoint_epoch_80.pth
+USE_PRETRAIN_MODEL: False
+PRETRAIN_CKPT: ../output/once_models/ckpt/checkpoint_xx.pth
 CLOUD_PRETRAIN_CKPT: /home/work/user-job-dir/ONCE_Benchmark/output/once_models/ckpt/checkpoint_xx.pth
 
 DATA_CONFIG:
