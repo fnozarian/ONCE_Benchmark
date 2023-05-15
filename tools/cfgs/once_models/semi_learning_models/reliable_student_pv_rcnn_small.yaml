@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
-USE_PRETRAIN_MODEL: False
-PRETRAIN_CKPT: ../output/once_models/semi_learning_models/reliable_student_pv_rcnn_small/default/pretrain_ckpt/checkpoint_epoch_1.pth
+USE_PRETRAIN_MODEL: True
+PRETRAIN_CKPT: ../output/cfgs/once_models/semi_learning_models/reliable_student_pv_rcnn_small/once_rs_small/pretrain_ckpt/checkpoint_epoch_80.pth
 CLOUD_PRETRAIN_CKPT: /home/work/user-job-dir/ONCE_Benchmark/output/once_models/ckpt/checkpoint_xx.pth
 
 DATA_CONFIG:
@@ -34,8 +34,8 @@ DATA_CONFIG:
 
 OPTIMIZATION:
     PRETRAIN:
-        BATCH_SIZE_PER_GPU: 3
-        NUM_EPOCHS: 1 # 80
+        BATCH_SIZE_PER_GPU: 4
+        NUM_EPOCHS: 80
         OPTIMIZER: adam_onecycle
         LR: 0.003
         WEIGHT_DECAY: 0.01
@@ -53,8 +53,8 @@ OPTIMIZATION:
     SEMI_SUP_LEARNING:
         NAME: ReliableStudent
         LD_BATCH_SIZE_PER_GPU: 1
-        UD_BATCH_SIZE_PER_GPU: 1 # 4
-        NUM_EPOCHS: 25 # 5 epoch
+        UD_BATCH_SIZE_PER_GPU: 4
+        NUM_EPOCHS: 25
         UNLABELED_WEIGHT: 1.0
 
         TEACHER:
@@ -302,6 +302,7 @@ MODEL:
             CLS_LOSS: BinaryCrossEntropy
             REG_LOSS: smooth-l1
             CORNER_LOSS_REGULARIZATION: True
+            REDUCE_LOSS: 'sum' # mean
             LOSS_WEIGHTS: {
                 'rcnn_cls_weight': 1.0,
                 'rcnn_reg_weight': 1.0,
@@ -327,7 +328,7 @@ MODEL:
         OUTPUT_RAW_SCORE: False
 
         EVAL_METRIC: once
-
+        ENABLE_ONCE_EVAL: False
         NMS_CONFIG:
             MULTI_CLASSES_NMS: False
             NMS_TYPE: nms_gpu

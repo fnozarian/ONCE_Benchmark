@@ -3,6 +3,7 @@ import datetime
 import glob
 import os
 from pathlib import Path
+import copy
 
 import torch
 import torch.distributed as dist
@@ -140,7 +141,8 @@ def main():
 
     # --------------------------------stage I pretraining---------------------------------------
     logger.info('************************Stage I Pretraining************************')
-    pretrain_model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=datasets['pretrain'])
+    MODEL_PRETRAINED = copy.deepcopy(cfg.MODEL)
+    pretrain_model = build_network(model_cfg=MODEL_PRETRAINED, num_class=len(cfg.CLASS_NAMES), dataset=datasets['pretrain'])
     pretrain_model.set_model_type('origin')
 
     if cfg.get('USE_PRETRAIN_MODEL', False):
@@ -216,12 +218,14 @@ def main():
 
     # --------------------------------stage II SSL training---------------------------------------
     logger.info('************************Stage II SSL training************************')
-    teacher_model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=datasets['labeled'])
+    MODEL_TEACHER = copy.deepcopy(cfg.MODEL)
+    teacher_model = build_network(model_cfg=MODEL_TEACHER, num_class=len(cfg.CLASS_NAMES), dataset=datasets['labeled'])
     """
     for param in teacher_model.parameters(): # ema teacher model
         param.detach_()
     """
-    student_model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=datasets['labeled'])
+    MODEL_STUDENT = copy.deepcopy(cfg.MODEL)
+    student_model = build_network(model_cfg=MODEL_STUDENT, num_class=len(cfg.CLASS_NAMES), dataset=datasets['labeled'])
     teacher_model.set_model_type('teacher')
     student_model.set_model_type('student')
 
