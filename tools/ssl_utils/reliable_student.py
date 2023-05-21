@@ -1,26 +1,23 @@
 import torch
-from .semi_utils import reverse_transform, load_data_to_gpu, construct_pseudo_label, construct_pseudo_label_scores
-from pcdet.models.model_utils.model_nms_utils import class_agnostic_nms
-from pcdet.ops.iou3d_nms import iou3d_nms_utils
-import os
-import pickle
 
+from .semi_utils import (construct_pseudo_label, construct_pseudo_label_scores,
+                         load_data_to_gpu, reverse_transform)
 
 
 @torch.no_grad()
 def filter_pseudo_labels(pred_dicts, cfgs):
     filtered_pred_dicts = []
     for ind in range(len(pred_dicts)):
-        record_dict = {
-            'pred_boxes': torch.empty((0, 7)),
-            'pred_scores': torch.empty((0, 1)),
-            'pred_labels': torch.empty((0, 1)),
-            'pred_sem_scores': torch.empty((0, 1))
-            }
         pseudo_score = pred_dicts[ind]['pred_scores']
         pseudo_box = pred_dicts[ind]['pred_boxes']
         pseudo_label = pred_dicts[ind]['pred_labels']
         pseudo_sem_score = pred_dicts[ind]['pred_sem_scores']
+        record_dict = {
+            'pred_boxes': torch.empty((0, 7), device=pseudo_label.device),
+            'pred_scores': torch.empty((0, 1), device=pseudo_label.device),
+            'pred_labels': torch.empty((0, 1), device=pseudo_label.device),
+            'pred_sem_scores': torch.empty((0, 1), device=pseudo_label.device)
+            }
         if len(pseudo_label) > 0:
             conf_thresh = torch.tensor(cfgs.TEACHER.THRESH, device=pseudo_label.device).unsqueeze(
                 0).repeat(len(pseudo_label), 1).gather(dim=1, index=(pseudo_label - 1).unsqueeze(-1))
@@ -71,8 +68,8 @@ def reliable_student(teacher_model, student_model,
     load_data_to_gpu(ud_student_batch_dict)
     load_data_to_gpu(ud_teacher_batch_dict)
     if dist:
-        teacher_model=teacher_model.onepass
-        student_model=student_model.onepass
+        teacher_model=teacher_model.module.onepass
+        student_model=student_model.module.onepass
 
     with torch.no_grad():
         for cur_module in teacher_model.module_list:
@@ -83,11 +80,11 @@ def reliable_student(teacher_model, student_model,
     teacher_boxes = reverse_transform(teacher_boxes, ud_teacher_batch_dict, ud_student_batch_dict)
     pl_boxes = construct_pseudo_label(teacher_boxes)
     pl_scores = construct_pseudo_label_scores(teacher_boxes)
-    pl_boxes.to(ud_student_batch_dict['points'].device)# could be refactored in a better way
-    pl_scores.to(ud_student_batch_dict['points'].device)
+    #pl_boxes.to(ud_student_batch_dict['points'].device)
+    #pl_scores.to(ud_student_batch_dict['points'].device)
     ud_student_batch_dict['gt_boxes'] = pl_boxes
     ud_student_batch_dict['pl_scores'] = pl_scores
-
+    
     ld_ret_dict, ld_tb_dict, _ = student_model(ld_student_batch_dict)
 
     for cur_module in student_model.module_list[:-1]:
