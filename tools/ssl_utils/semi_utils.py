@@ -91,12 +91,14 @@ def reverse_transform(teacher_boxes, teacher_dict, student_dict, aug_key='pred_b
 
     if isinstance(teacher_boxes, list):
         for bs_idx, teacher_box in enumerate(teacher_boxes):
-            transformed_boxes = transform_boxes(teacher_box[aug_key], bs_idx)
-            teacher_box[aug_key] = transformed_boxes
+            if teacher_box[aug_key].nelement():
+                transformed_boxes = transform_boxes(teacher_box[aug_key], bs_idx)
+                teacher_box[aug_key] = transformed_boxes
     elif isinstance(teacher_boxes, torch.Tensor):
         for bs_idx, teacher_box in enumerate(teacher_boxes):
-            transformed_boxes = transform_boxes(teacher_box, bs_idx)
-            teacher_boxes[bs_idx] = transformed_boxes
+            if teacher_box.nelement():
+                transformed_boxes = transform_boxes(teacher_box, bs_idx)
+                teacher_boxes[bs_idx] = transformed_boxes
 
     return teacher_boxes
 
@@ -184,13 +186,37 @@ def construct_pseudo_label(boxes):
     num_gt_list = []
     for bs_idx, box in enumerate(boxes):
         box_preds = box['pred_boxes']
-        label_preds = box['pred_labels'].float().unsqueeze(-1)
+        label_preds = box['pred_labels'].float()
         num_gt_list.append(box_preds.shape[0])
-        box_list.append(torch.cat([box_preds, label_preds], dim=1))
+        try:
+            pl=torch.cat([box_preds, label_preds.unsqueeze(-1)], dim=1)
+        except:
+            pl=torch.cat([box_preds, label_preds], dim=1)
+        box_list.append(pl)
     batch_size = len(boxes)
     num_max_gt = max(num_gt_list)
     gt_boxes = box_list[0].new_zeros((batch_size, num_max_gt, 8))
     for bs_idx in range(batch_size):
         num_gt = num_gt_list[bs_idx]
         gt_boxes[bs_idx, :num_gt, :] = box_list[bs_idx]
+    return gt_boxes
+
+
+@torch.no_grad()
+def construct_pseudo_label_scores(boxes):
+    score_list = []
+    num_gt_list = []
+    for box in boxes:
+        pred_scores = box['pred_scores']
+        num_gt_list.append(pred_scores.shape[0])
+        score_list.append(pred_scores)
+    batch_size = len(boxes)
+    num_max_gt = max(num_gt_list)
+    gt_boxes = score_list[0].new_zeros((batch_size, num_max_gt))
+    for bs_idx in range(batch_size):
+        num_gt = num_gt_list[bs_idx]
+        try:
+            gt_boxes[bs_idx, :num_gt] = score_list[bs_idx]
+        except:
+            gt_boxes[bs_idx, :num_gt] = score_list[bs_idx].squeeze()
     return gt_boxes

@@ -1,25 +1,8 @@
 import torch
-from .semi_utils import reverse_transform, load_data_to_gpu, construct_pseudo_label
-from pcdet.models.model_utils.model_nms_utils import class_agnostic_nms
-from pcdet.ops.iou3d_nms import iou3d_nms_utils
-import os
-import pickle
 
-@torch.no_grad()
-def construct_pseudo_label_scores(boxes):
-    score_list = []
-    num_gt_list = []
-    for box in boxes:
-        pred_scores = box['pred_scores']
-        num_gt_list.append(pred_scores.shape[0])
-        score_list.append(pred_scores)
-    batch_size = len(boxes)
-    num_max_gt = max(num_gt_list)
-    gt_boxes = score_list[0].new_zeros((batch_size, num_max_gt))
-    for bs_idx in range(batch_size):
-        num_gt = num_gt_list[bs_idx]
-        gt_boxes[bs_idx, :num_gt] = score_list[bs_idx]
-    return gt_boxes
+from .semi_utils import (construct_pseudo_label, construct_pseudo_label_scores,
+                         load_data_to_gpu, reverse_transform)
+
 
 @torch.no_grad()
 def filter_pseudo_labels(pred_dicts, cfgs):
@@ -29,35 +12,29 @@ def filter_pseudo_labels(pred_dicts, cfgs):
         pseudo_box = pred_dicts[ind]['pred_boxes']
         pseudo_label = pred_dicts[ind]['pred_labels']
         pseudo_sem_score = pred_dicts[ind]['pred_sem_scores']
-        if len(pseudo_label) == 0:
-            record_dict = {
-                'pred_boxes': torch.empty((0, 7)),
-                'pred_scores': torch.empty((0, 1)),
-                'pred_labels': torch.empty((0, 1)),
-                'pred_sem_scores': torch.empty((0, 1))
-            }
-            filtered_pred_dicts.append(record_dict)
-            continue
-
-        conf_thresh = torch.tensor(cfgs.TEACHER.THRESH, device=pseudo_label.device).unsqueeze(
-            0).repeat(len(pseudo_label), 1).gather(dim=1, index=(pseudo_label - 1).unsqueeze(-1))
-
-        sem_conf_thresh = torch.tensor(cfgs.TEACHER.SEM_THRESH, device=pseudo_label.device).unsqueeze(
-            0).repeat(len(pseudo_label), 1).gather(dim=1, index=(pseudo_label - 1).unsqueeze(-1))
-
-        valid_inds = pseudo_score > conf_thresh.squeeze()
-
-        valid_inds = valid_inds & (pseudo_sem_score > sem_conf_thresh.squeeze())
-
         record_dict = {
-            'pred_boxes': pseudo_box[valid_inds],
-            'pred_scores': pseudo_score[valid_inds],
-            'pred_labels': pseudo_label[valid_inds],
-            'pred_sem_scores': pseudo_sem_score[valid_inds]
-        }
+            'pred_boxes': torch.empty((0, 7), device=pseudo_label.device),
+            'pred_scores': torch.empty((0, 1), device=pseudo_label.device),
+            'pred_labels': torch.empty((0, 1), device=pseudo_label.device),
+            'pred_sem_scores': torch.empty((0, 1), device=pseudo_label.device)
+            }
+        if len(pseudo_label) > 0:
+            conf_thresh = torch.tensor(cfgs.TEACHER.THRESH, device=pseudo_label.device).unsqueeze(
+                0).repeat(len(pseudo_label), 1).gather(dim=1, index=(pseudo_label - 1).unsqueeze(-1))
+            sem_conf_thresh = torch.tensor(cfgs.TEACHER.SEM_THRESH, device=pseudo_label.device).unsqueeze(
+                0).repeat(len(pseudo_label), 1).gather(dim=1, index=(pseudo_label - 1).unsqueeze(-1))
+            valid_inds = pseudo_score > conf_thresh.squeeze()
+            valid_inds = valid_inds & (pseudo_sem_score > sem_conf_thresh.squeeze())
+            if valid_inds.sum():
+                record_dict = {
+                    'pred_boxes': pseudo_box[valid_inds],
+                    'pred_scores': pseudo_score[valid_inds],
+                    'pred_labels': pseudo_label[valid_inds],
+                    'pred_sem_scores': pseudo_sem_score[valid_inds]
+                }
         filtered_pred_dicts.append(record_dict)
 
-    return pred_dicts
+    return filtered_pred_dicts
 
 
 @torch.no_grad()
@@ -90,6 +67,9 @@ def reliable_student(teacher_model, student_model,
     load_data_to_gpu(ld_student_batch_dict)
     load_data_to_gpu(ud_student_batch_dict)
     load_data_to_gpu(ud_teacher_batch_dict)
+    if dist:
+        teacher_model=teacher_model.module.onepass
+        student_model=student_model.module.onepass
 
     with torch.no_grad():
         for cur_module in teacher_model.module_list:
@@ -100,9 +80,11 @@ def reliable_student(teacher_model, student_model,
     teacher_boxes = reverse_transform(teacher_boxes, ud_teacher_batch_dict, ud_student_batch_dict)
     pl_boxes = construct_pseudo_label(teacher_boxes)
     pl_scores = construct_pseudo_label_scores(teacher_boxes)
+    #pl_boxes.to(ud_student_batch_dict['points'].device)
+    #pl_scores.to(ud_student_batch_dict['points'].device)
     ud_student_batch_dict['gt_boxes'] = pl_boxes
     ud_student_batch_dict['pl_scores'] = pl_scores
-
+    
     ld_ret_dict, ld_tb_dict, _ = student_model(ld_student_batch_dict)
 
     for cur_module in student_model.module_list[:-1]:

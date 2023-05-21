@@ -61,13 +61,15 @@ class ReliableStudentPVRCNN(PVRCNN):
 
         loss = point_loss + rpn_loss + rcnn_loss
         tb_dict['loss'] = loss
-
+        
+        reduce_loss = getattr(torch, self.model_cfg.ROI_HEAD.LOSS_CONFIG.REDUCE_LOSS, 'sum')
+        
         ub_tb_dict = {}
         for key in tb_dict:
             if 'loss' in key or 'point_pos_num' in key:
-                ub_tb_dict[f"{key}_unlabeled"] = tb_dict[key]
+                ub_tb_dict[f"{key}_unlabeled"] = reduce_loss(tb_dict[key]) if isinstance(tb_dict[key], torch.Tensor) and tb_dict[key].shape else tb_dict[key]
             else:
-                ub_tb_dict[key] = tb_dict[key]
+                ub_tb_dict[key] = reduce_loss(tb_dict[key]) if isinstance(tb_dict[key], torch.Tensor) and tb_dict[key].shape else tb_dict[key]
 
         if self.model_cfg.ROI_HEAD.get("ENABLE_EVAL", None):
             metrics_pred_types = self.model_cfg.ROI_HEAD.get("METRICS_PRED_TYPES", None)
