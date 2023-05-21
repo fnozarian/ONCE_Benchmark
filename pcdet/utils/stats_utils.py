@@ -16,7 +16,7 @@ import math
 from pcdet.config import cfg
 from matplotlib import pyplot as plt
 import torch.nn.functional as F
-
+from collections import Counter
 
 class MetricRegistry(object):
     def __init__(self, **kwargs):
@@ -303,6 +303,12 @@ class KITTIEvalMetrics(Metric):
                 current_classes_int.append(curcls)
         self.current_classes = current_classes_int
         self.min_overlaps = self.min_overlaps[:, :, self.current_classes]
+                    
+        self.class_counter = Counter()
+        for info in self.dataset.once_infos:
+            for name in info['annos']['name']:
+                self.class_counter[name] += 1
+        print(self.class_counter)
         self.add_state("detections", default=[])
         self.add_state("groundtruths", default=[])
         self.add_state("overlaps", default=[])
@@ -340,7 +346,7 @@ class KITTIEvalMetrics(Metric):
 
             num_gts = valid_gts_mask.sum()
             num_preds = valid_preds_mask.sum()
-            overlap = valid_gts_mask.new_zeros((num_preds, num_gts))
+            overlap= torch.cuda.FloatTensor(torch.Size((num_preds, num_gts))).zero_()  # (N, M)
             if num_gts > 0 and num_preds > 0:
                 overlap = iou3d_nms_utils.boxes_iou3d_gpu(valid_pred_boxes[:, 0:7], valid_gt_boxes[:, 0:7])
 
@@ -353,19 +359,22 @@ class KITTIEvalMetrics(Metric):
         if (len(self.detections) >= self.reset_state_interval) and cfg.MODEL.POST_PROCESSING.ENABLE_ONCE_EVAL:
             # eval_class() takes ~45ms for each sample and linearly increasing
             # => ~1.7s for one epoch or 37 samples (if only called once at the end of epoch).
-            kitti_eval_metrics = eval_class(self.groundtruths, self.detections, self.current_classes,
-                                 self.metric, self.min_overlaps, self.overlaps)
+            groundtruths = [i.clone().detach() for i in self.groundtruths]
+            detections = [i.clone().detach() for i in self.detections]
+            overlaps = [i.clone().detach() for i in self.overlaps]
+            kitti_eval_metrics = eval_class(groundtruths, detections, self.current_classes,
+                                self.metric, self.min_overlaps, overlaps)
             mAP_3d = get_mAP(kitti_eval_metrics["precision"])
             mAP_3d_R40 = get_mAP_R40(kitti_eval_metrics["precision"])
             kitti_eval_metrics.update({"mAP_3d": mAP_3d, "mAP_3d_R40": mAP_3d_R40})
-
+            
             # Get calculated TPs, FPs, FNs
             # Early results might not be correct as the 41 values are initialized with zero
             # and only a few predictions are available and thus a few thresholds are non-zero.
             # Therefore, mean over several zero values results in low final value.
             # detailed_stats shape (3, 1, 41, 5) where last dim is
             # {0: 'tp', 1: 'fp', 2: 'fn', 3: 'similarity', 4: 'precision thresholds'}
-            total_num_samples = max(len(self.detections), 1)
+            total_num_samples = max(len(detections), 1)
             detailed_stats = kitti_eval_metrics['detailed_stats']
             raw_metrics_classwise = {}
             for m, metric_name in enumerate(
@@ -389,11 +398,11 @@ class KITTIEvalMetrics(Metric):
                     kitti_eval_metrics[metric_name + '_per_tps'] = class_metrics_batch
 
             # Get calculated PR and class distribution
-            num_lbl_samples = len(self.dataset.kitti_infos)
+            num_lbl_samples = len(self.dataset.once_infos)
             num_ulb_samples = total_num_samples
             ulb_lbl_ratio = num_ulb_samples / num_lbl_samples
             pred_labels, pred_scores = [], []
-            for sample_dets in self.detections:
+            for sample_dets in detections:
                 if len(sample_dets) == 0:
                     continue
                 pred_labels.append(sample_dets[:, -2])
@@ -411,7 +420,7 @@ class KITTIEvalMetrics(Metric):
             lbl_cls_counter = {}
             for cls_id, cls_thresh in zip(self.current_classes, self.min_overlaps[0, self.metric]):
                 cls_name = self.class_to_name[cls_id]
-                num_lbl_cls = self.dataset.class_counter[cls_name]
+                num_lbl_cls = self.class_counter[cls_name]
                 cls_mask = pred_labels == cls_id
                 num_ulb_cls = (tp_mask & cls_mask).sum().item()
                 ulb_cls_counter[cls_name] = num_ulb_cls
@@ -467,7 +476,7 @@ class KITTIEvalMetrics(Metric):
 
             prec_rec_fig = fig.get_figure()
             kitti_eval_metrics['prec_rec_fig'] = prec_rec_fig
-
+            plt.close()
             kitti_eval_metrics.pop('recall')
             kitti_eval_metrics.pop('precision')
             kitti_eval_metrics.pop('raw_recall')
@@ -765,8 +774,8 @@ def cal_angle_diff(angle1, angle2):
     diff = torch.abs(angle1 - angle2)
     gt_pi_mask = diff > math.pi
     diff[gt_pi_mask] = 2 * math.pi - diff[gt_pi_mask]
-
-    return diff
+    
+    return diff.sum().item()
 
 
 def cal_tp_metric(tp_boxes, gt_boxes):
@@ -776,9 +785,9 @@ def cal_tp_metric(tp_boxes, gt_boxes):
     trans_err = center_distance.sum().item()
 
     # Angle difference
-    angle_diff = cal_angle_diff(tp_boxes[:, 6], gt_boxes[:, 6])
-    assert angle_diff.sum() >= 0
-    orient_err = angle_diff.sum().item()
+    orient_err = cal_angle_diff(tp_boxes[:, 6], gt_boxes[:, 6])
+    #assert angle_diff.sum() >= 0
+    #orient_err = angle_diff.sum().item()
 
     # Scale difference
     aligned_tp_boxes = tp_boxes.detach().clone()
